@@ -1,8 +1,3 @@
-beautifulsoup4
-bs4
-certifi
-emoji
-lxml
-PySocks
-requests
-urllib3
+python-dotenv==0.19.2
+pandas==1.4.4
+instagpy
