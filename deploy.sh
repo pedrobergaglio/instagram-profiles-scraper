@@ -8,34 +8,35 @@ fi
 
 # Set variables
 PROJECT_DIR="/home/CODE/instagram-scraper"
-SERVICE_NAME="message-generator"
+DOCKER_SERVICE="message_generator"
 
-echo "Deploying Message Personalization Tool..."
+echo "Deploying Message Generator using Docker..."
 
-# Create directories if they don't exist
-mkdir -p $PROJECT_DIR/message_personalization/.streamlit
+# Install Docker if not installed
+if ! [ -x "$(command -v docker)" ]; then
+  echo "Installing Docker..."
+  apt-get update
+  apt-get install -y docker.io docker-compose
+  systemctl enable --now docker
+fi
 
-# Copy configuration files
-cp message_generator.service /etc/systemd/system/$SERVICE_NAME.service
-mkdir -p $PROJECT_DIR/message_personalization/.streamlit/
-cp message_personalization/.streamlit/config.toml $PROJECT_DIR/message_personalization/.streamlit/
-
-# Update Apache configuration
+# Copy Apache configuration
 cp -f saucotec.conf /etc/apache2/sites-enabled/
 a2ensite saucotec.conf
+a2enmod proxy proxy_http proxy_wstunnel headers
 
-# Install required packages
-pip3 install -r $PROJECT_DIR/message_personalization/requirements.txt
+# Navigate to project directory
+cd $PROJECT_DIR
 
-# Set proper permissions
-chown -R ubuntu:sharedgroup $PROJECT_DIR
-chmod -R 755 $PROJECT_DIR
+# Build and start Docker container
+docker-compose down
+docker-compose up --build -d
 
-# Enable and start the service
-systemctl daemon-reload
-systemctl enable $SERVICE_NAME
-systemctl restart $SERVICE_NAME
+# Enable Docker to start on boot
+systemctl enable docker
+
+# Restart Apache
 systemctl restart apache2
 
-echo "Deployment completed!"
+echo "Docker deployment completed!"
 echo "Access the application at: https://saucotec.com/message_generator"

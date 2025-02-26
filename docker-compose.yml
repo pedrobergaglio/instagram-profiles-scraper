@@ -1,0 +1,10 @@
+version: '3'
+services:
+  message_generator:
+    build: .
+    ports:
+      - "8501:8501"
+    restart: always
+    volumes:
+      - ./message_personalization:/app/message_personalization
+    container_name: message_generator
