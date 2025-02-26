@@ -21,7 +21,7 @@ mkdir -p $PROJECT_DIR/message_personalization/.streamlit/
 cp message_personalization/.streamlit/config.toml $PROJECT_DIR/message_personalization/.streamlit/
 
 # Update Apache configuration
-cp saucotec.conf /etc/apache2/sites-available/
+cp -f saucotec.conf /etc/apache2/sites-available/
 a2ensite saucotec.conf
 
 # Install required packages
