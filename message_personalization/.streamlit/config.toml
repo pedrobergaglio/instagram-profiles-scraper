@@ -1,5 +1,4 @@
 [server]
-baseUrlPath = "message_generator"
 headless = true
 enableCORS = false
 enableXsrfProtection = false
