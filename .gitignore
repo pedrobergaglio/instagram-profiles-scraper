@@ -161,3 +161,4 @@ cython_debug/
 
 #Custom
 Insta Saved Sessions/
+message_personalization/generated_messages.csv
