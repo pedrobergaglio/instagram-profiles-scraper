@@ -5,7 +5,7 @@ After=network.target
 [Service]
 WorkingDirectory=/home/CODE/instagram-scraper
 Environment="PYTHONPATH=/home/CODE/instagram-scraper"
-ExecStart=/usr/bin/python3 -m streamlit run message_personalization/dashboard.py --server.port=8501
+ExecStart=/usr/bin/python3 -m streamlit run message_personalization/dashboard.py --server.port=8501 --server.baseUrlPath=/message_generator --server.enableXsrfProtection=false
 Restart=on-failure
 User=ubuntu
 Group=sharedgroup
