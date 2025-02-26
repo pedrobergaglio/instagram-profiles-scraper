@@ -1,0 +1,8 @@
+[server]
+baseUrlPath = "/message_generator"
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+serverAddress = "localhost"
+gatherUsageStats = false
