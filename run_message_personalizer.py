@@ -41,7 +41,8 @@ def run_message_personalizer():
     try:
         logger.info("Iniciando aplicación Streamlit")
         print("Iniciando Personalizador de Mensajes...")
-        subprocess.run(["streamlit", "run", dashboard_path])
+        # Use baseUrlPath for running with the correct base URL
+        subprocess.run(["streamlit", "run", dashboard_path, "--server.baseUrlPath=message_generator"])
         logger.info("Aplicación Streamlit finalizada")
     except Exception as e:
         logger.error(f"Error al ejecutar la aplicación: {str(e)}", exc_info=True)

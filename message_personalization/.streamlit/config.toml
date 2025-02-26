@@ -1,7 +1,8 @@
 [server]
-baseUrlPath = "/message_generator"
+baseUrlPath = "message_generator"
+headless = true
 enableCORS = false
-enableXsrfProtection = true
+enableXsrfProtection = false
 
 [browser]
 serverAddress = "localhost"

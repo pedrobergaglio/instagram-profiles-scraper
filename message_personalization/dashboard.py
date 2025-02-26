@@ -69,12 +69,19 @@ st.markdown("""
         border-radius: 0.5rem;
         padding: 1rem;
     }
+    /* Ensure CSS works with base path */
+    div[data-testid="stDecoration"] {
+        background-image: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Función para asegurar que exista el archivo CSV
 def ensure_csv_exists():
-    file_path = "message_personalization/generated_messages.csv"
+    # Use a path relative to the module
+    file_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(file_dir, "generated_messages.csv")
+    
     if not os.path.exists(file_path):
         logger.info(f"Creando archivo CSV de mensajes en {file_path}")
         with open(file_path, 'w', newline='', encoding='utf-8') as file:
@@ -201,6 +208,9 @@ def generate_all_messages():
         logger.debug(f"Generando mensaje para empresa #{i+1}")
         
         try:
+            # Import locally to avoid circular imports
+            from .message_generator import generate_message
+            
             response = generate_message(
                 st.session_state.guidelines,
                 st.session_state.template,
@@ -284,7 +294,8 @@ if st.session_state.page == 'dashboard':
     
 elif st.session_state.page == 'history':
     logger.debug("Cargando página de historial")
-    from history import show_history_page
+    # Import locally to avoid circular imports
+    from .history import show_history_page
     show_history_page()
 
 # Función para actualizar la información de la empresa

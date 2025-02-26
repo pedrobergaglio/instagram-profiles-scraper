@@ -8,3 +8,7 @@ services:
     volumes:
       - ./message_personalization:/app/message_personalization
     container_name: message_generator
+    environment:
+      - STREAMLIT_SERVER_BASE_URL_PATH=message_generator
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_HEADLESS=true

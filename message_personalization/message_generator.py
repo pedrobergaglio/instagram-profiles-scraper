@@ -6,80 +6,63 @@ import logging
 # Configure logging
 logger = logging.getLogger("message_generator")
 
-# Cargar variables de entorno
+# Load environment variables
 load_dotenv()
-logger.debug("Variables de entorno cargadas en message_generator")
 
-# Configurar Gemini API
-api_key = os.getenv('GOOGLE_API_KEY')
-if api_key:
-    genai.configure(api_key=api_key)
-    logger.info("API de Gemini configurada correctamente")
+# Set up the Gemini API
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
 else:
-    logger.error("No se encontró la clave de API de Google en las variables de entorno")
+    logger.error("Error: GOOGLE_API_KEY not found in environment variables.")
 
-def generate_message(guidelines, template, company_info):
+def generate_message(guidelines, template, context):
     """
-    Genera un mensaje personalizado utilizando la API de Google Gemini.
+    Generate a personalized message using Google's Gemini API.
     
     Args:
-        guidelines: Directrices para generar el mensaje
-        template: Plantilla del mensaje con campos entre corchetes
-        company_info: Información sobre la empresa
+        guidelines (str): Instructions for message generation
+        template (str): Message template with placeholders
+        context (str): Information about the company/recipient
         
     Returns:
-        El mensaje personalizado generado
+        str: Generated message
     """
-    if not api_key:
-        logger.error("Intento de generación sin API key configurada")
-        return "Error: No se encontró la clave de API de Google. Verifica el archivo .env"
+    logger.info("Iniciando generación de mensaje")
+    
+    if not GOOGLE_API_KEY:
+        error_msg = "No se puede generar el mensaje: No se encontró la API key de Google."
+        logger.error(error_msg)
+        return error_msg
     
     try:
-        logger.info("Iniciando generación de mensaje con Gemini API")
-        logger.debug(f"Longitud de directrices: {len(guidelines)} caracteres")
-        logger.debug(f"Longitud de plantilla: {len(template)} caracteres")
-        logger.debug(f"Longitud de info de empresa: {len(company_info)} caracteres")
+        # Set up the model
+        model = genai.GenerativeModel('gemini-pro')
         
-        # Configurar el modelo
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        logger.debug("Modelo gemini-2.0-flash seleccionado")
-        
-        # Crear el prompt para el modelo
+        # Format the prompt
         prompt = f"""
-        You are an expert assistant in creating personalized messages for business communications in Spanish.
+        Basándote en las siguientes directrices y plantilla, genera un mensaje personalizado para la empresa descrita.
         
-        ## INSTRUCTIONS:
-        - Generate a personalized message for a potential client following the provided guidelines.
-        - Use the template as a base, replacing fields in brackets with appropriate information.
-        - Use the company information to personalize the content relevantly.
-        - The message should be professional but conversational, and entirely in Spanish.
-        - DO NOT include any additional comments, explanations or notes - only the final message.
-        
-        ## GUIDELINES:
+        DIRECTRICES:
         {guidelines}
         
-        ## MESSAGE TEMPLATE:
+        PLANTILLA:
         {template}
         
-        ## COMPANY INFORMATION:
-        {company_info}
+        INFORMACIÓN DE LA EMPRESA:
+        {context}
         
-        ## GENERATED MESSAGE:
+        Genera un mensaje personalizado completo que reemplace todos los marcadores [campo] en la plantilla con información coherente del contexto.
         """
         
-        # Llamar a la API
-        logger.info("Enviando solicitud a la API de Gemini")
-        start_time = __import__('time').time()
+        # Generate the message
         response = model.generate_content(prompt)
-        end_time = __import__('time').time()
+        generated_message = response.text.strip()
         
-        logger.info(f"Respuesta recibida de Gemini API en {end_time - start_time:.2f} segundos")
+        logger.info("Mensaje generado correctamente")
+        return generated_message
         
-        # Devolver el mensaje generado
-        result = response.text.strip()
-        logger.debug(f"Mensaje generado con {len(result)} caracteres")
-        return result
-    
     except Exception as e:
-        logger.error(f"Error al llamar a la API de Gemini: {str(e)}", exc_info=True)
-        return f"Error al generar el mensaje: {str(e)}"
+        error_msg = f"Error al generar mensaje: {str(e)}"
+        logger.error(error_msg)
+        return error_msg

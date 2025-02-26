@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import logging
+from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger("history")
@@ -14,77 +15,70 @@ def truncate_text(text, max_length=60):
 
 def show_history_page():
     """
-    Muestra la página de historial con mensajes generados anteriormente
+    Display the message history page
     """
-    logger.info("Cargando página de historial")
-    st.markdown('<div class="main-header">Historial de Mensajes Generados</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">Historial de Mensajes</div>', unsafe_allow_html=True)
     
-    # Verificar si existe el archivo CSV
-    if not os.path.exists("message_personalization/generated_messages.csv"):
+    # Get path to CSV file
+    file_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(file_dir, "generated_messages.csv")
+    
+    if not os.path.exists(file_path):
+        st.warning("No hay historial de mensajes disponible.")
         logger.warning("Archivo de historial no encontrado")
-        st.info("No hay mensajes generados todavía.")
         return
     
     try:
-        # Cargar historial desde CSV
-        logger.debug("Intentando cargar historial desde CSV")
-        df = pd.read_csv("message_personalization/generated_messages.csv")
-        logger.info(f"Historial cargado con {len(df)} registros")
+        # Load the CSV file
+        df = pd.read_csv(file_path)
         
-        # Si está vacío
+        # Check if file is empty or only has headers
         if df.empty:
-            logger.info("El archivo CSV existe pero está vacío")
-            st.info("No hay mensajes generados todavía.")
+            st.warning("El historial de mensajes está vacío.")
+            logger.info("Archivo de historial vacío")
             return
-        
-        # Agregar campo de búsqueda
-        search_term = st.text_input("🔍 Buscar en historial:", placeholder="Ingrese texto para filtrar mensajes...")
+            
+        # Add search functionality
+        search_term = st.text_input("Buscar en mensajes", key="search_input")
         
         if search_term:
-            logger.info(f"Usuario buscando: '{search_term}'")
-            # Filtrar dataframe en todas las columnas de texto
+            # Filter based on search term
             filtered_df = df[
-                df['directrices'].str.contains(search_term, case=False, na=False) | 
-                df['plantilla'].str.contains(search_term, case=False, na=False) | 
-                df['contexto'].str.contains(search_term, case=False, na=False) | 
-                df['mensaje_generado'].str.contains(search_term, case=False, na=False)
+                df['mensaje_generado'].str.contains(search_term, case=False, na=False) |
+                df['contexto'].str.contains(search_term, case=False, na=False) |
+                df['directrices'].str.contains(search_term, case=False, na=False) |
+                df['plantilla'].str.contains(search_term, case=False, na=False)
             ]
-            logger.info(f"Búsqueda completada: {len(filtered_df)} resultados encontrados")
-        else:
-            filtered_df = df
-            logger.debug("No se aplicó filtro de búsqueda")
-        
-        # Mostrar cantidad de resultados
-        st.write(f"Mostrando {len(filtered_df)} de {len(df)} mensajes totales")
-        
-        # Mostrar historial
-        logger.debug(f"Renderizando {len(filtered_df)} registros en la interfaz")
-        for i, row in filtered_df.iterrows():
-            # Obtener una versión truncada del contexto para el título del expander
-            company_info_preview = truncate_text(row['contexto'])
             
-            # Usar el preview del contexto en lugar del número de mensaje y fecha
-            with st.expander(company_info_preview):
-                logger.debug(f"Usuario expandió mensaje con contexto: {company_info_preview}")
-                col1, col2 = st.columns(2)
+            if filtered_df.empty:
+                st.info(f"No se encontraron resultados para '{search_term}'.")
+                return
                 
+            df = filtered_df
+        
+        # Sort by date descending
+        df['fecha'] = pd.to_datetime(df['fecha'])
+        df = df.sort_values(by='fecha', ascending=False)
+        
+        # Display messages
+        st.write(f"Total de mensajes: {len(df)}")
+        
+        for i, row in df.iterrows():
+            with st.expander(f"{row['fecha']} - {row['contexto'][:50]}..."):
+                col1, col2 = st.columns(2)
                 with col1:
                     st.subheader("Información")
-                    st.write(f"**Fecha:** {row['fecha']}")
-                    
-                    st.write("**Directrices:**")
-                    st.text_area("", value=row['directrices'], height=100, key=f"dir_{i}", disabled=True)
-                    
-                    st.write("**Plantilla:**")
-                    st.text_area("", value=row['plantilla'], height=100, key=f"temp_{i}", disabled=True)
-                    
-                    st.write("**Contexto de Empresa:**")
-                    st.text_area("", value=row['contexto'], height=100, key=f"ctx_{i}", disabled=True)
+                    st.write("**Fecha:**", row['fecha'])
+                    st.write("**Contexto:**", row['contexto'])
+                    st.write("**Directrices:**", row['directrices'])
+                    st.write("**Plantilla:**", row['plantilla'])
                 
                 with col2:
                     st.subheader("Mensaje Generado")
                     st.code(row['mensaje_generado'], language="")
-    
+                    
+        logger.info(f"Se mostraron {len(df)} mensajes en el historial")
+                    
     except Exception as e:
-        logger.error(f"Error al cargar el historial: {str(e)}", exc_info=True)
         st.error(f"Error al cargar el historial: {str(e)}")
+        logger.error(f"Error al procesar el historial: {str(e)}")
