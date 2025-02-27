@@ -37,7 +37,7 @@ def generate_message(guidelines, template, context):
     
     try:
         # Set up the model
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Format the prompt
         prompt = f"""
