@@ -16,7 +16,7 @@ constructora de piscinas, maximo es el gerente comercial. empresa antigua, con m
 
 """
 
-
+from history import show_history_page
 import streamlit as st
 import pandas as pd
 import os
@@ -208,8 +208,6 @@ def generate_all_messages():
         logger.debug(f"Generando mensaje para empresa #{i+1}")
         
         try:
-            # Import locally to avoid circular imports
-            from .message_generator import generate_message
             
             response = generate_message(
                 st.session_state.guidelines,
@@ -294,8 +292,6 @@ if st.session_state.page == 'dashboard':
     
 elif st.session_state.page == 'history':
     logger.debug("Cargando página de historial")
-    # Import locally to avoid circular imports
-    from .history import show_history_page
     show_history_page()
 
 # Función para actualizar la información de la empresa

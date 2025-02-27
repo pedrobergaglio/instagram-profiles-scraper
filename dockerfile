@@ -7,7 +7,9 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+# Create .streamlit directory if it doesn't exist
+RUN mkdir -p message_personalization/.streamlit
+
 EXPOSE 8501
 
-# Run Streamlit without baseUrlPath
-ENTRYPOINT ["streamlit", "run", "message_personalization/dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableCORS=false"]
+ENTRYPOINT ["streamlit", "run", "message_personalization/dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableXsrfProtection=false"]
