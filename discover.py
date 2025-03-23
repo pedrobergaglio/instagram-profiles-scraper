@@ -14,7 +14,7 @@ def get_instagram_business_data(user_id, access_token, username):
               The dictionary structure corresponds to the fields requested.
     """
     # Construct the API endpoint.
-    endpoint = f"https://graph.facebook.com/v19.0/{user_id}"  # Use a specific API version
+    endpoint = f"https://graph.facebook.com/v22.0/{user_id}"  # Use a specific API version
     fields = "business_discovery.username(" + username + \
         "){followers_count,media_count,media{id,caption,like_count,comments_count,timestamp},website,biography,username,profile_picture_url}"
     params = {
@@ -25,7 +25,9 @@ def get_instagram_business_data(user_id, access_token, username):
     try:
         # Make the API request.
         response = requests.get(endpoint, params=params)
+        print(0)
         response.raise_for_status()  # Raise an exception for bad status codes.
+        print(1)
         data = response.json()
         return data
     except requests.exceptions.RequestException as e:

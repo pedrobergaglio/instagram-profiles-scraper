@@ -1,0 +1,150 @@
+<div class="flex flex-col h-full">
+    <!-- Conversation header -->
+    <div class="border-b border-gray-700 p-4 flex justify-between items-center">
+        <div class="flex items-center">
+            <!-- Platform icon -->
+            {% if user_info.platform == 'whatsapp' %}
+            <span class="mr-3 text-green-500">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22c-5.523 0-10-4.477-10-10S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+            </span>
+            {% else %}
+            <span class="mr-3 text-purple-500">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+            </span>
+            {% endif %}
+            
+            <div>
+                <h2 class="text-xl font-semibold">{{ user_info.username or 'User ' + sender_id }}</h2>
+                <div class="flex items-center">
+                    <span class="text-sm text-gray-400">Status:</span>
+                    {% if status == 'human' %}
+                        <span class="ml-2 bg-red-600 text-white text-xs px-2 py-1 rounded-full">Human needed</span>
+                    {% else %}
+                        <span class="ml-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full">Handled by AI</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Auto-refresh toggle -->
+        <div class="text-sm">
+            <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="auto-refresh-{{ sender_id }}" class="sr-only" checked>
+                <div class="relative w-11 h-6 bg-gray-700 rounded-full toggle-bg">
+                    <div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform"></div>
+                </div>
+                <span class="ml-2 text-gray-300">Auto-refresh</span>
+            </label>
+        </div>
+    </div>
+    
+    <!-- Messages container -->
+    <div id="messages-container" class="flex-grow p-4 overflow-y-auto conversation-container">
+        {% for msg in messages %}
+        <div class="{% if msg.is_from_me %}message-sent{% else %}message-received{% endif %} chat-message">
+            <div>{{ msg.message }}</div>
+            <div class="timestamp">{{ msg.timestamp }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Message input - only show for human conversations -->
+    {% if status == 'human' %}
+    <div class="border-t border-gray-700 p-4">
+        <form hx-post="{{ url_for('send_message') }}"
+              hx-target="#conversation"
+              hx-swap="innerHTML"
+              class="flex flex-col gap-3">
+            <input type="hidden" name="sender_id" value="{{ sender_id }}">
+            <input type="hidden" name="platform" value="{{ user_info.platform or 'instagram' }}">
+            
+            <textarea name="message"
+                     class="w-full p-3 bg-secondary border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                     placeholder="Type your message here..."
+                     rows="3"></textarea>
+            
+            <div class="flex space-x-2">
+                <button type="submit"
+                       class="px-4 py-2 bg-primary hover:bg-blue-700 text-white rounded-lg flex-grow">
+                    Send Message
+                </button>
+                <button type="button"
+                       class="px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-lg"
+                       hx-post="{{ url_for('set_assistant_mode') }}"
+                       hx-target="#conversation"
+                       hx-swap="innerHTML"
+                       hx-vals='{"sender_id": "{{ sender_id }}"}'>
+                    Return to Assistant
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // Scroll to bottom of messages
+    document.addEventListener('htmx:afterSwap', function(event) {
+        const messagesContainer = document.getElementById('messages-container');
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+    });
+    
+    // Auto-refresh handling - without Jinja2 conditional
+    document.addEventListener('DOMContentLoaded', function() {
+        // Define the sender ID from the hidden input
+        const senderIdInput = document.querySelector('input[name="sender_id"]');
+        if (!senderIdInput) return; // Exit if no sender ID (not in a conversation)
+        
+        const senderId = senderIdInput.value;
+        const toggleId = 'auto-refresh-' + senderId;
+        const toggleElement = document.getElementById(toggleId);
+        
+        if (toggleElement) {
+            // Set up refresh functionality
+            let refreshTimer;
+            
+            function startRefresh() {
+                refreshTimer = setInterval(function() {
+                    if (toggleElement.checked) {
+                        // Use the data attribute to get the URL
+                        const url = '/conversation/' + senderId;
+                        htmx.ajax('GET', url, {
+                            target: '#conversation',
+                            swap: 'innerHTML'
+                        });
+                    }
+                }, 5000); // 5 second refresh
+            }
+            
+            function stopRefresh() {
+                clearInterval(refreshTimer);
+            }
+            
+            // Handle toggle changes
+            toggleElement.addEventListener('change', function() {
+                if (this.checked) {
+                    startRefresh();
+                } else {
+                    stopRefresh();
+                }
+            });
+            
+            // Start refresh on load
+            startRefresh();
+            
+            // Clean up when leaving
+            document.body.addEventListener('htmx:beforeSwap', function(event) {
+                if (event.detail.target.id === 'conversation') {
+                    stopRefresh();
+                }
+            });
+        }
+    });
+</script>

@@ -8,3 +8,42 @@ pyarrow>=12.0.0,<14.0.0
 streamlit>=1.29.0
 grpcio>=1.59.0
 instagpy
+# Flask and related packages
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# OpenAI API
+openai==1.6.1
+
+# Streamlit for dashboard
+streamlit
+
+# Database
+SQLAlchemy
+
+# HTTP requests
+requests==2.31.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Date handling
+pytz
+
+# Security
+cryptography
+
+# Development tools
+pytest
+black
+flake8
+
+# Production server
+gunicorn==21.2.0
+
+# Instagram API requirements
+instagram-basic-display
+
+# Utilities
+python-dateutil
+tqdm
