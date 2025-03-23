@@ -7,3 +7,4 @@ watchdog>=3.0.0
 pyarrow>=12.0.0,<14.0.0
 streamlit>=1.29.0
 grpcio>=1.59.0
+instagpy

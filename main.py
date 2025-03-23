@@ -8,8 +8,6 @@ from pathlib import Path
 from instagpy import InstaGPy
 from instagpy import config
 
-# Load environment variables and create data directory
-load_dotenv()
 data_dir = Path("data")
 data_dir.mkdir(exist_ok=True)
 
@@ -101,6 +99,10 @@ def get_detailed_follower_data(insta, followers, max_followers=20):
     return detailed_followers
 
 def main():
+
+    # Load environment variables and create data directory
+    load_dotenv(override=True)
+
     config.MAX_RETRIES = 3
     config.TIMEOUT = 10
     
@@ -117,7 +119,7 @@ def main():
     try:
         username = os.getenv('INSTAGRAM_USERNAME')
         password = os.getenv('INSTAGRAM_PASSWORD')
-        target_username = 'elviejowatt' #os.getenv('TARGET_USERNAME', 'instagram')
+        target_username = os.getenv('TARGET_USERNAME', 'instagram')
         
         if not username or not password:
             raise ValueError("Please set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in .env file")
