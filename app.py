@@ -1,3 +1,4 @@
+from discover import get_instagram_business_data
 import requests
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify, Response
 import os
@@ -43,6 +44,8 @@ init_db()
 # Instagram OAuth Configuration
 INSTAGRAM_CLIENT_ID = os.getenv('INSTAGRAM_CLIENT_ID')
 INSTAGRAM_CLIENT_SECRET = os.getenv('INSTAGRAM_CLIENT_SECRET')
+INSTAGRAM_APP_ID = os.getenv('INSTAGRAM_APP_ID')
+INSTAGRAM_APP_SECRET = os.getenv('INSTAGRAM_APP_SECRET')
 REDIRECT_URI = os.getenv('INSTAGRAM_REDIRECT_URI2')
 VERIFY_TOKEN = os.getenv('VERIFY_TOKEN')
 
@@ -64,11 +67,21 @@ def inject_account_info():
     whatsapp_connected = False
     
     # Get Instagram info if available
-    if 'access_token' in session and 'instagram_account_id' in session:
+    if session and 'instagram_username' in session:
+        instagram_username = session['instagram_username']
+    else:
+        print("No Instagram username in session")
+
+    """ if 'access_token' in session and 'instagram_account_id' in session:
+        
         access_token = session['access_token']
         account_info = get_account_info(access_token)
         if account_info and 'instagram_business_account' in account_info:
             instagram_username = account_info['instagram_business_account'].get('username')
+        else:
+            print("No Instagram Business Account found in session")
+    else:
+        print("No Instagram access token in session") """
     
     # Check if WhatsApp is connected
     if session.get('whatsapp_connected'):
@@ -128,61 +141,201 @@ def index():
 
 @app.route('/auth')
 def auth():
-    scopes = ['instagram_business_manage_messages', 'instagram_business_basic']
-    instagram_auth_url = (
-        f"https://www.instagram.com/oauth/authorize"
-        f"?client_id={INSTAGRAM_CLIENT_ID}"
+    """Facebook Login for Instagram Business API using Facebook Login for Business"""
+    scopes = [
+        'instagram_basic',
+        'instagram_manage_insights',
+        'pages_read_engagement',
+        'pages_show_list',
+        'instagram_content_publish',
+        'instagram_manage_comments',
+        'business_management'  # Add this scope for better business data access
+    ]
+    
+    # Construct Facebook Login URL according to Facebook Login for Business docs
+    extras_param = '{"setup":{"channel":"IG_API_ONBOARDING"}}'
+    
+    facebook_login_url = (
+        f"https://www.facebook.com/v22.0/dialog/oauth"
+        f"?client_id={INSTAGRAM_APP_ID}"
+        f"&display=page"
+        f"&extras={extras_param}"
         f"&redirect_uri={REDIRECT_URI}"
-        f"&scope={','.join(scopes)}"
         f"&response_type=code"
+        f"&scope={','.join(scopes)}"
     )
-    print("Instagram auth URL:", instagram_auth_url)
-    return redirect(instagram_auth_url)
+    print("Facebook login URL:", facebook_login_url)
+    return redirect(facebook_login_url)
 
 @app.route('/callback')
 def callback():
-    print(f"Received callback with args: {request.args}")  # Debug print
+    """Handle Facebook Login callback"""
+    print(f"Received callback with args: {request.args}")
+
+    long_lived_token = request.args.get('long_lived_token', '')
+    print(f"Long-lived token: {long_lived_token}")
+    
+    # Get the authorization code
     code = request.args.get('code')
     if not code:
-        return 'Error: No code received', 400
+        print("No code found in request")
+        return 'Error: No authorization code received', 400
+
+    print(f"Authorization code: {code}")
 
     try:
-        # Get short-lived token
-        short_lived_token_response = exchange_code_for_token(code)
-        if not short_lived_token_response:
-            return 'Error getting short-lived access token', 400
+        # Exchange code for access token
+        token_response = requests.get(
+            'https://graph.facebook.com/v22.0/oauth/access_token',
+            params={
+                'client_id': INSTAGRAM_APP_ID,
+                'client_secret': INSTAGRAM_APP_SECRET,
+                'redirect_uri': REDIRECT_URI,
+                'code': code
+            }
+        )
+        
+        print(f"Token exchange response: {token_response.text}")
+        
+        if token_response.status_code != 200:
+            print(f"Error in token exchange: {token_response.text}")
+            return f'Error: Failed to exchange code for token: {token_response.text}', 400
+            
+        token_data = token_response.json()
+        access_token = token_data.get('access_token')
+        
+        if not access_token:
+            print("No access token in response")
+            return 'Error: Failed to get access token', 400
+            
+        print(f"Access token: {access_token}")
+        
+        # STEP 4: Get the User's Page, Page Access Token, and Instagram Business Account
+        # This follows the documentation exactly:
+        # https://developers.facebook.com/docs/instagram-api/getting-started
+        pages_response = requests.get(
+            "https://graph.facebook.com/v22.0/me/accounts",
+            params={
+                'access_token': access_token,
+                'fields': 'id,name,access_token,instagram_business_account'
+            }
+        )
+        
+        print(f"Pages API response status: {pages_response.status_code}")
+        print(f"Pages API response: {pages_response.text}")
+        
+        if pages_response.status_code != 200:
+            print(f"Error getting Pages: {pages_response.text}")
+            return f'Error: Failed to get Facebook Pages: {pages_response.text}', 400
+            
+        pages_data = pages_response.json()
+        
+        # Check if we have Pages data
+        if 'data' not in pages_data or not pages_data['data']:
+            print("No Facebook Pages found in response")
+            return 'Error: No Facebook Pages found. Please create a Facebook Page first.', 400
+        
+        # Find a Page with Instagram Business Account
+        instagram_page = None
+        for page in pages_data['data']:
+            if 'instagram_business_account' in page:
+                instagram_page = page
+                break
+        
+        if not instagram_page:
+            print("No Instagram Business Account found in any Page")
+            return render_template('error.html', 
+                                 message="No Instagram Business Account found. Please make sure your Facebook Page is connected to an Instagram Professional account.")
+        
+        # Store necessary information in session
+        session['access_token'] = access_token
+        session['instagram_account_id'] = instagram_page['instagram_business_account']['id']
+        session['page_access_token'] = instagram_page['access_token']
+        session['page_id'] = instagram_page['id']
+        session['page_name'] = instagram_page['name']
+        
+        print(f"Found Instagram Business Account: {instagram_page['instagram_business_account']['id']}")
+        print(f"Connected to Page: {instagram_page['name']} ({instagram_page['id']})")
+        print(f"Page Access Token: {instagram_page['access_token'][:20]}...")
+        
+        # Save token to database
+        save_auth_token(
+            business_id=instagram_page['instagram_business_account']['id'],
+            access_token=instagram_page['access_token'],  # Use Page access token
+            platform='instagram',
+            expires_at=datetime.now() + timedelta(days=60)
+        )
+        
+        # Get Instagram account details (username, etc.)
+        instagram_account = get_instagram_account_details(
+            instagram_page['instagram_business_account']['id'], 
+            instagram_page['access_token']
+        )
+        
+        if instagram_account:
+            session['instagram_username'] = instagram_account.get('username')
+            session['instagram_account_id'] = instagram_page['instagram_business_account']['id']
+            print(f"Connected to Instagram account: {instagram_account.get('username')}")
 
-        print("Short-lived token response:", short_lived_token_response)  # Debug print
-        
-        # Convert to long-lived token
-        long_lived_token = convert_to_long_lived_token(short_lived_token_response['access_token'])
-        if not long_lived_token:
-            return 'Error converting to long-lived token', 400
-
-        # Store tokens in session
-        session['access_token'] = long_lived_token['access_token']
-        session['token_expires'] = datetime.now() + timedelta(days=60)
-        
-        # Get Instagram account ID from webhook or stored value
-        ig_account_id = os.getenv('INSTAGRAM_ACCOUNT_ID')  # Add this to .env
-        if not ig_account_id:
-            ig_account_id = get_instagram_business_account(long_lived_token['access_token'])
-        
-        if ig_account_id:
-            # Store the token with Instagram account ID
-            save_auth_token(
-                business_id=ig_account_id,
-                access_token=long_lived_token['access_token'],
-                platform='instagram',
-                expires_at=datetime.now() + timedelta(days=60)
-            )
-            print(f"Stored token for Instagram account: {ig_account_id}")
-            session['instagram_account_id'] = ig_account_id
         
         return redirect(url_for('dashboard'))
+            
     except Exception as e:
-        print(f"Token exchange error: {e}")
-        return f'Authentication failed: {str(e)}', 400
+        print(f"Error in callback: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('error.html', message=f'Authentication failed: {str(e)}')
+
+def get_instagram_account_details(instagram_business_id, access_token):
+    """Get Instagram account details using the Instagram Business account ID"""
+    try:
+        response = requests.get(
+            f"https://graph.facebook.com/v22.0/{instagram_business_id}",
+            params={
+                'access_token': access_token,
+                'fields': 'id,username,profile_picture_url,name'
+            }
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Error getting Instagram account details: {response.text}")
+            return None
+    except Exception as e:
+        print(f"Exception getting Instagram account details: {e}")
+        return None
+
+# Dashboard routes
+
+@app.route('/dashboard')
+def dashboard():
+    """Dashboard page"""
+    if 'access_token' not in session or 'instagram_account_id' not in session:
+        return redirect(url_for('instagram_login'))
+    return render_template('dashboard.html')
+
+    
+    # Get Instagram profile data
+"""  try:
+    print("Fetching Instagram profile data...")
+
+    profile_data = get_instagram_business_data(
+        user_id=session['instagram_account_id'],
+        access_token=session['access_token'],
+        username=session.get('username', '')  # You might want to store this during login
+    )
+    
+    if profile_data and 'business_discovery' in profile_data:
+        profile = profile_data['business_discovery']
+        return render_template('dashboard.html', profile=profile)
+    else:
+        print("No profile data found in response:", profile_data)
+        return render_template('dashboard.html', error="Failed to fetch Instagram profile data")
+        
+except Exception as e:
+    print(f"Error fetching profile data: {str(e)}")
+    return render_template('dashboard.html', error=str(e)) """
 
 # Token exchange functions
 def get_instagram_business_account(access_token):
@@ -204,74 +357,6 @@ def get_instagram_business_account(access_token):
         print(f"Error getting Instagram account: {e}")
         return None
     
-def exchange_code_for_token(code):
-    print("Exchanging code:", code)
-    try:
-        response = requests.post('https://api.instagram.com/oauth/access_token', data={
-            'client_id': INSTAGRAM_CLIENT_ID,
-            'client_secret': INSTAGRAM_CLIENT_SECRET,
-            'grant_type': 'authorization_code',
-            'redirect_uri': REDIRECT_URI,
-            'code': code
-        })
-        print("Short-lived token response:", response.text)  # Debug print
-        return response.json() if response.status_code == 200 else None
-    except Exception as e:
-        print(f"Error in exchange_code_for_token: {e}")
-        return None
-
-def convert_to_long_lived_token(short_lived_token):
-    print ("Converting to long-lived token:", short_lived_token)
-    try:
-        response = requests.get('https://graph.instagram.com/access_token', params={
-            'client_secret': INSTAGRAM_CLIENT_SECRET,
-            'access_token': short_lived_token,
-            'grant_type': 'ig_exchange_token'
-        })
-        print("Long-lived token response:", response.text)  # Debug print
-        return response.json() if response.status_code == 200 else None
-    except Exception as e:
-        print(f"Error in convert_to_long_lived_token: {e}")
-        return None
-
-def refresh_token(token):
-    response = requests.get(os.getenv('TOKEN_REFRESH_URL'), params={
-        'grant_type': 'ig_refresh_token',
-        'access_token': token
-    })
-    return response.json() if response.status_code == 200 else None
-
-def get_account_info(access_token):
-    """Get Instagram account info using Instagram Graph API"""
-    try:
-        response = requests.get('https://graph.instagram.com/v19.0/me', params={
-            'access_token': access_token,
-            'fields': 'id,username,account_type,media_count'
-        })
-        print("Instagram account info response:", response.text)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # Format the response to match the template expectations
-            return {
-                'instagram_business_account': {
-                    'id': data.get('id'),
-                    'username': data.get('username'),
-                    'name': data.get('username'),  # Instagram API doesn't provide name
-                    'profile_picture_url': None  # Instagram API doesn't provide profile pic
-                }
-            }
-        return None
-    except Exception as e:
-        print(f"Error getting account info: {e}")
-        return None
-
-# Dashboard routes
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    return render_template('dashboard.html')
 
 # HTMX partial routes for dynamic updates
 @app.route('/users/<status>')
@@ -302,6 +387,9 @@ def get_conversation(sender_id):
                           user_info=user_info, 
                           sender_id=sender_id,
                           status=status)
+
+def get_account_info(access_token):
+    pass
 
 @app.route('/send_message', methods=['POST'])
 @login_required
@@ -975,6 +1063,66 @@ def catch_all(path):
     
     return "Page not found", 404
 
+@app.route('/fetch_instagram_profile', methods=['GET'])
+@login_required
+def fetch_instagram_profile():
+    """Fetch Instagram profile data for a specific username"""
+    if 'access_token' not in session or 'instagram_account_id' not in session:
+        return jsonify({
+            "success": False,
+            "error": "Instagram not connected. Please connect your Instagram account first."
+        }), 401
+    
+    try:
+        
+
+        #session['access_token'] = "IGAAYSBnqbP3JBZAE93N1BjMmZAfRGN6SmJWWDF0d1B2cElYRloxRWlqaDJXenNMQWFPNmF3WHZAtejdwVFI4czQwNGxwMXJvMXNldGtoZAHExVG5IeW9ORGtZAZAGRrOURGYlZAFemtJVzBMck1SVXZAMYW5zeWc1ZAWV5S1NIcU1vSk1iTQZDZD"
+        
+        print(f"Fetching profile data with account ID: {session['instagram_account_id']}")
+        print(f"Using access token!: {session['access_token']}")
+        
+        # Get the data using the connected account's credentials
+        data = get_instagram_business_data(
+            user_id=session['instagram_account_id'],
+            access_token=session['access_token'],
+            username='saucotec'  # Target username
+        )
+        
+        # Check if the request was successful
+        if data is None:
+            print("No data returned from the API.")
+            return jsonify({
+                "success": False,
+                "error": "Failed to fetch profile data. Check server logs for details."
+            }), 400
+        
+        # Check if we got an error response from the API
+        if 'error' in data:
+            print(f"API Error: {data['error']}")
+            return jsonify({
+                "success": False,
+                "error": f"Instagram API Error: {data['error'].get('message', 'Unknown error')}",
+                "details": data['error']
+            }), 400
+            
+        # Store the data in session for display
+        session['instagram_profile_data'] = data
+        return jsonify({
+            "success": True,
+            "message": "Profile data fetched successfully",
+            "data": data
+        })
+            
+    except Exception as e:
+        print(f"Error fetching Instagram profile: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            "success": False,
+            "error": f"Server error: {str(e)}"
+        }), 500
+
 if __name__ == '__main__':
+    load_dotenv(override=True)
     port = int(os.environ.get('PORT', 7777))
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'True').lower() == 'true')
