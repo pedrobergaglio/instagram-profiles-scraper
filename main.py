@@ -1,204 +1,159 @@
 import os
-import time
-import random
+import logging
 from datetime import datetime
-import pandas as pd
+from typing import Optional, Dict, Any, Generator
 from dotenv import load_dotenv
-from pathlib import Path
-from instagpy import InstaGPy
-from instagpy import config
 
-data_dir = Path("data")
-data_dir.mkdir(exist_ok=True)
+from database import get_db, DatabaseService
+from session_manager import SessionManager
+from proxy_manager import ProxyManager
 
-def log(message, level="INFO"):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{level}] {timestamp} - {message}")
+# Load environment variables
+load_dotenv()
 
-def save_to_csv(data, filename):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filepath = data_dir / f"{filename}_{timestamp}.csv"
-    df = pd.DataFrame([data] if isinstance(data, dict) else data)
-    df.to_csv(filepath, index=False)
-    log(f"Data saved to {filepath}")
+# Configure logging
+logging.basicConfig(
+    level=os.getenv('LOG_LEVEL', 'INFO'),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def wait_with_backoff(attempt=1, base_delay=60):
-    """Implement exponential backoff when rate limited"""
-    delay = base_delay * (2 ** (attempt - 1))  # Exponential backoff
-    max_delay = 900  # Max 15 minutes
-    delay = min(delay, max_delay)
-    log(f"Rate limit hit. Waiting {delay} seconds before retry (attempt {attempt})...")
-    time.sleep(delay)
+class InstagramScraper:
+    def __init__(self):
+        self.session_manager = SessionManager()
+        self.proxy_manager = ProxyManager()
+        self.db = next(get_db())
+        self.db_service = DatabaseService(self.db)
 
-def handle_rate_limit(response):
-    """Check if response indicates rate limiting"""
-    if isinstance(response, dict):
-        message = response.get('message', '').lower()
-        if 'wait' in message or 'rate limit' in message:
-            return True
-    return False
-
-def get_detailed_follower_data(insta, followers, max_followers=20):
-    """Get detailed data for each public follower with batch processing"""
-    detailed_followers = []
-    processed = 0
-    batch_size = 10  # Reduced batch size
-    public_accounts = [f for f in followers if not f.get('is_private', True)]
-    retry_count = 0
-    max_retries = 5
-    
-    for i in range(0, len(public_accounts), batch_size):
-        if processed >= max_followers:
-            break
+    def get_valid_session(self) -> Any:
+        """Get a valid Instagram session."""
+        session = self.session_manager.get_best_session()
+        if not session:
+            username = os.getenv('INSTAGRAM_USERNAME')
+            password = os.getenv('INSTAGRAM_PASSWORD')
+            if not username or not password:
+                raise ValueError("Instagram credentials not found in environment variables")
             
-        # Process current batch
-        batch = public_accounts[i:i + batch_size]
-        batch_processed = 0
+            proxy = self.proxy_manager.get_next_proxy()
+            session = self.session_manager.create_session(
+                username=username,
+                password=password,
+                proxy=proxy
+            )
+        return session
+
+    def scrape_account(self, target_username: str) -> Dict[str, Any]:
+        """Scrape an Instagram account and its followers."""
+        session = self.get_valid_session()
         
-        for follower in batch:
-            if processed >= max_followers:
-                break
-                
+        try:
+            # Get account info
+            account_info = session.get_account_info(target_username)
+            account = self.db_service.create_or_update_account(
+                username=target_username,
+                **account_info
+            )
+            
+            # Create scraping session
+            scraping_session = self.db_service.create_scraping_session(account.id)
+            
             try:
-                username = follower.get('username')
-                log(f"Fetching detailed data for public account: {username}")
+                # Get followers
+                for batch in self.get_detailed_follower_data(session, target_username):
+                    for follower_data in batch:
+                        self.db_service.create_or_update_follower(
+                            account_id=account.id,
+                            **follower_data
+                        )
+                        scraping_session.total_followers_scraped += 1
                 
-                # Get detailed user data
-                user_data = insta.get_user_data(username)
-                
-                if handle_rate_limit(user_data):
-                    retry_count += 1
-                    if retry_count > max_retries:
-                        log("Max retries reached. Saving current progress...", "WARNING")
-                        return detailed_followers
-                    wait_with_backoff(retry_count)
-                    continue
-                
-                if user_data and user_data.get('status') == 'ok':
-                    detailed_followers.append(user_data.get('user', {}))
-                    processed += 1
-                    batch_processed += 1
-                    retry_count = 0  # Reset counter on success
-                
-                # Random delay between requests
-                time.sleep(random.uniform(5, 10))
+                self.db_service.complete_scraping_session(
+                    scraping_session.id,
+                    status='completed'
+                )
                 
             except Exception as e:
-                log(f"Error fetching data for {username}: {e}", "ERROR")
-                if 'wait' in str(e).lower():
-                    retry_count += 1
-                    wait_with_backoff(retry_count)
-                continue
-        
-        log(f"Processed batch of {batch_processed} public accounts. Total processed: {processed}")
-        # Longer sleep between batches
-        sleep_time = random.uniform(30, 60)
-        log(f"Sleeping for {sleep_time:.2f} seconds between batches...")
-        time.sleep(sleep_time)
+                logger.error(f"Error while scraping followers: {str(e)}")
+                self.db_service.complete_scraping_session(
+                    scraping_session.id,
+                    status='failed'
+                )
+                raise
             
-    return detailed_followers
+            return self.db_service.get_account_stats(account.id)
+            
+        except Exception as e:
+            logger.error(f"Error while scraping account {target_username}: {str(e)}")
+            raise
+
+    def get_detailed_follower_data(
+        self,
+        session: Any,
+        username: str,
+        batch_size: int = 10
+    ) -> Generator[list, None, None]:
+        """Get detailed data for each follower in batches."""
+        try:
+            followers = []
+            batch = []
+            
+            for follower in session.get_followers(username):
+                try:
+                    # Get detailed info for the follower
+                    follower_info = session.get_account_info(follower['username'])
+                    batch.append(follower_info)
+                    
+                    if len(batch) >= batch_size:
+                        yield batch
+                        batch = []
+                        
+                    # Handle rate limits
+                    self.handle_rate_limit(session)
+                    
+                except Exception as e:
+                    logger.error(f"Error getting follower data for {follower['username']}: {str(e)}")
+                    continue
+            
+            # Yield remaining followers
+            if batch:
+                yield batch
+                
+        except Exception as e:
+            logger.error(f"Error in get_detailed_follower_data: {str(e)}")
+            raise
+
+    def handle_rate_limit(
+        self,
+        session: Any,
+        error: Optional[Exception] = None,
+        cooldown: int = 600
+    ) -> None:
+        """Handle rate limiting and challenges."""
+        if error and "challenge_required" in str(error):
+            self.session_manager.increment_challenges(session)
+            if not self.session_manager.is_session_valid(session):
+                session = self.get_valid_session()
+        
+        self.session_manager.increment_requests(session)
+        self.session_manager.save_session(session)
 
 def main():
-
-    # Load environment variables and create data directory
-    load_dotenv(override=True)
-
-    config.MAX_RETRIES = 3
-    config.TIMEOUT = 10
-    
-    log("Starting Instagram scraper...")
-    
-    # Initialize InstaGPy
-    insta = InstaGPy(
-        use_mutiple_account=False,
-        session_ids=None,
-        min_requests=3,
-        max_requests=6
-    )
-    
     try:
-        username = os.getenv('INSTAGRAM_USERNAME')
-        password = os.getenv('INSTAGRAM_PASSWORD')
-        target_username = os.getenv('TARGET_USERNAME', 'instagram')
+        target_username = os.getenv('TARGET_USERNAME')
+        if not target_username:
+            raise ValueError("TARGET_USERNAME not found in environment variables")
         
-        if not username or not password:
-            raise ValueError("Please set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in .env file")
+        scraper = InstagramScraper()
+        stats = scraper.scrape_account(target_username)
         
-        log(f"Attempting to login as {username}...")
-        
-        # Login with credentials
-        insta.login(
-            username=username, 
-            password=password, 
-            save_session=True
-        )
-        
-        if not insta.logged_in:
-            raise Exception("Failed to login")
-        
-        log("Successfully logged in!")
-        
-        # Get user data with one API call
-        log(f"Fetching data for target user: {target_username}")
-        user_data = insta.get_user_data(target_username)
-        save_to_csv(user_data, 'user_details')
-        
-        # Add delay before next request
-        time.sleep(random.uniform(2, 15))
-        
-        # Get followers if account is public
-        if not user_data.get('user', {}).get('is_private'):
-            log("Account is public, fetching followers...")
-            followers = []
-            retry_count = 0
+        logger.info("Scraping completed successfully!")
+        logger.info(f"Stats for {target_username}:")
+        for key, value in stats.items():
+            logger.info(f"{key}: {value}")
             
-            while retry_count < 2:  # Max 5 retries for initial follower fetch
-                try:
-                    response = insta.get_user_friends(
-                        target_username,
-                        followers_list=True,
-                        pagination=True,
-                        total=1000
-                    )
-                    
-                    if handle_rate_limit(response):
-                        retry_count += 1
-                        wait_with_backoff(retry_count)
-                        continue
-                    
-                    if response and 'data' in response:
-                        followers = response['data']
-                        log(f"Found {len(followers)} followers")
-                        break  # Success, exit retry loop
-                        
-                except Exception as e:
-                    log(f"Error while fetching followers: {e}", "ERROR")
-                    if 'wait' in str(e).lower():
-                        retry_count += 1
-                        wait_with_backoff(retry_count)
-                    else:
-                        break  # Break on non-rate-limit errors
-            
-            if followers:
-                # Save basic follower data
-                save_to_csv(followers, f'followers_basic_{target_username}')
-                
-                # Get detailed data with built-in rate limiting
-                log("Getting detailed data for public accounts only...")
-                detailed_followers = get_detailed_follower_data(insta, followers, max_followers=1000)
-                
-                if detailed_followers:
-                    log(f"Saving detailed data for {len(detailed_followers)} public accounts...")
-                    save_to_csv(detailed_followers, f'followers_detailed_{target_username}')
-            else:
-                log("Failed to fetch followers after max retries", "ERROR")
-                
-            time.sleep(random.uniform(4, 15))
-        else:
-            log("Account is private, skipping followers fetch", "WARNING")
-                
     except Exception as e:
-        log(f"Error occurred: {e}", "ERROR")
+        logger.error(f"Error in main: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()

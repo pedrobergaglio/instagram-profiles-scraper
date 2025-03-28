@@ -1,0 +1,1 @@
+- copy _instagpy/instagpy to venv/lib/python3.10/site-packages
