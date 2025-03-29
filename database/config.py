@@ -5,11 +5,11 @@ from .models import Base
 import os
 
 # Database configuration
-DB_USER = os.getenv('MYSQL_DB_USER', 'appsheet')
-DB_PASSWORD = os.getenv('MYSQL_DB_PASSWORD', 'Myeest822')
-DB_HOST = os.getenv('MYSQL_DB_HOST', '149.50.134.100')
-DB_PORT = os.getenv('DB_PORT', '3306')
-DB_NAME = os.getenv('MYSQL_SYSTEM_DB_NAME', 'profiles_scraped')
+DB_USER = os.getenv('MYSQL_DB_USER')
+DB_PASSWORD = os.getenv('MYSQL_DB_PASSWORD')
+DB_HOST = os.getenv('MYSQL_DB_HOST')
+DB_PORT = os.getenv('DB_PORT')
+DB_NAME = os.getenv('MYSQL_SYSTEM_DB_NAME')
 
 # Create database URL
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
