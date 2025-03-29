@@ -28,7 +28,7 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Create logger for this module
 logger = logging.getLogger(__name__)
@@ -314,8 +314,8 @@ def show_settings_page():
         
         with col1:
             st.subheader("Scraping Settings")
-            batch_size = st.number_input("Batch Size", min_value=1, value=50)
-            delay = st.number_input("Delay between requests (seconds)", min_value=1, value=2)
+            batch_size = st.number_input("Batch Size", min_value=1, value=10)
+            delay = st.number_input("Delay between requests (seconds)", min_value=1, value=8)
             max_retries = st.number_input("Maximum retries per request", min_value=1, value=3)
         
         with col2:
